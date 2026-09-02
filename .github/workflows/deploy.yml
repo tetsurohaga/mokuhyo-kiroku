@@ -1,0 +1,93 @@
+# ------------------------------------------------------------------
+# GitHub Actions -> Artifact Registry -> Cloud Run への自動デプロイ
+# ------------------------------------------------------------------
+# main ブランチへの push をきっかけに、
+#   1. Google Cloud へ認証（Workload Identity 連携。鍵ファイル不要）
+#   2. Docker イメージをビルドして Artifact Registry へ push
+#   3. Cloud Run にデプロイ
+# を行う。
+#
+# 事前に GitHub リポジトリの Settings > Secrets and variables > Actions で
+# 下記のシークレット／変数を登録しておくこと（README のデプロイ手順を参照）。
+# ------------------------------------------------------------------
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  # 手動実行も可能にしておく
+  workflow_dispatch:
+
+env:
+  # 変数（Variables）側で設定する値。環境ごとに変わる識別子。
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+  REPOSITORY: ${{ vars.ARTIFACT_REPOSITORY }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # Workload Identity 連携で OIDC トークンを発行するために必要な権限
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      # サービスアカウントキー（JSON）をリポジトリに置かずに認証する方式。
+      # GCP 側で Workload Identity プールを作り、GitHub リポジトリを信頼させておく。
+      - name: Google Cloud へ認証
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: gcloud CLI をセットアップ
+        uses: google-github-actions/setup-gcloud@v2
+
+      # docker コマンドが Artifact Registry へ push できるよう認証情報を設定する
+      - name: Docker の認証設定
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # NEXT_PUBLIC_* はビルド時にバンドルへ埋め込まれる。
+      # ローカルと同じ仕組み（.env.local を next build に読ませる）に揃えるため、
+      # CI では手元の .env.local の代わりに、GitHub Secrets から同じ内容を書き出す。
+      # チェックアウト先はジョブごとの使い捨て環境なので、ファイルは残らない。
+      - name: .env.local を生成
+        run: |
+          cat > .env.local <<EOF
+          NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          EOF
+
+      - name: Docker イメージをビルド
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${SERVICE}:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: イメージを Artifact Registry へ push
+        run: docker push "$IMAGE"
+
+      # --allow-unauthenticated は「Cloud Run のURLに誰でもアクセスできる」設定。
+      # ページ自体は公開されるが、データは Firebase 認証 + Firestore Security Rules
+      # で保護されているため、本人以外は目標やログを閲覧できない。
+      - name: Cloud Run へデプロイ
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 2 \
+            --memory 512Mi \
+            --quiet

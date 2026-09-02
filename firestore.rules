@@ -1,0 +1,36 @@
+rules_version = '2';
+
+/*
+ * Firestore Security Rules（設計書 6.2）
+ * -------------------------------------------------------------
+ * 本アプリはブラウザから直接 Firestore を読み書きするため、
+ * アクセス制御はサーバーコードではなく、このルールが唯一の砦になる。
+ *
+ * 方針:
+ *   - 未認証アクセスはすべて拒否
+ *   - 認証済みユーザーは、自分の uid 配下（users/{uid}/...）のみ読み書き可
+ *   - 上記以外のパスはすべて拒否（既定で deny なので明示的な allow を書かない）
+ *
+ * 反映方法:
+ *   firebase deploy --only firestore:rules
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // users/{uid} と、その配下のすべてのドキュメント（goals, logs を含む）
+    match /users/{uid}/{document=**} {
+      // request.auth はログイン済みのときだけ入る。null チェックが未認証拒否にあたる。
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      /*
+       * 「本人（唯一の許可アカウント）のみ」をさらに厳格にしたい場合は、
+       * 上の行を下記に差し替えて、自分の uid を直接埋め込む。
+       * uid は Firebase コンソールの Authentication > Users で確認できる。
+       *
+       * allow read, write: if request.auth != null
+       *   && request.auth.uid == uid
+       *   && request.auth.uid == "ここに自分のUIDを貼る";
+       */
+    }
+  }
+}

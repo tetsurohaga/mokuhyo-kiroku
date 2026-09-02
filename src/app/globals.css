@@ -1,26 +1,50 @@
+/*
+ * グローバルスタイル
+ * -------------------------------------------------------------
+ * Tailwind CSS v4 を使用。v4 では tailwind.config.js ではなく、
+ * この CSS ファイル内の `@theme` ディレクティブでデザイントークン
+ * （色・フォント等）を定義する方式が標準になっている。
+ * ここで定義した `--color-mint-500` は、そのまま
+ * `bg-mint-500` / `text-mint-500` などのユーティリティクラスとして使える。
+ */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* ---- ベースカラー: パステル調の明るい緑（mint） ---- */
+  --color-mint-50: #f3fbf6;
+  --color-mint-100: #e3f6ea;
+  --color-mint-200: #c6ecd6;
+  --color-mint-300: #9bdcb8;
+  --color-mint-400: #6bc795;
+  --color-mint-500: #47ab76; /* 主要なアクセント色（ボタン等） */
+  --color-mint-600: #388c60;
+  --color-mint-700: #2e6f4d;
+
+  /* ---- 補助色 ---- */
+  --color-ink-900: #1f2a24; /* 見出し等の濃いテキスト */
+  --color-ink-600: #55655c; /* 本文 */
+  --color-ink-400: #8b9a92; /* 補足・プレースホルダ */
+  --color-line: #e4efe8; /* 罫線・カード枠 */
+  --color-canvas: #f7fbf8; /* ページ背景 */
+
+  /* ---- フォント ---- */
+  --font-sans: var(--font-app-sans), system-ui, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  /* フォーム部品がOSのダークモード設定で暗転しないよう、ライト固定にする */
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-canvas);
+  color: var(--color-ink-900);
+  /* iOS Safari で入力欄フォーカス時に自動ズームされるのを防ぐため 16px を基準にする */
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* iOS の Safari でセーフエリア（ホームバー領域）を考慮するためのユーティリティ */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }

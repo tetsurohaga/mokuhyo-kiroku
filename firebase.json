@@ -1,0 +1,6 @@
+{
+  "//": "Firebase CLI 用の設定。本アプリのホスティングは Cloud Run で行うため、ここでは Firestore のルール反映のみを扱う。",
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
